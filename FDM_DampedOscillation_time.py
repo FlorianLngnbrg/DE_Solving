@@ -7,8 +7,8 @@ import time as tm
 
 # Konstanten
 m = 0.4 # Masse in kg
-D = 2   # Federkonstante
-k = 0.1 # Dämpfungskonstante
+D = 0.1   # Federkonstante
+k = 2 # Dämpfungskonstante
 
 # Randbedingungen
 y0 = 0.2
@@ -35,7 +35,7 @@ for j in range(0, 4):
     y_values = [y_i]
 
     # Randwerte
-    v_i = v0 - dt * ((k/m) * v0 + (D/m) * y0)
+    v_i = v0 - dt * ((D/m) * v0 + (k/m) * y0)
     y_i = y0 + dt * v0
 
     t_values.append(dt)
