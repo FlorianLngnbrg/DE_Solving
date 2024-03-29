@@ -1,0 +1,236 @@
+function nma_fem_driver
+%script to do a simulation of FEM solution of a second order ODE
+%by Nasser Abbasi
+
+close all; clear all;
+
+a = 1.000000;
+b = 0.250000;
+c = 5.000000;
+x0 = 0; % starting domain point
+u0 = 0.4;
+len = 10;
+beta = 0.084276;
+
+sol = 1;
+
+%plot(x, y);
+% Hier startet die Messung
+% tic;
+MAX_NODES = 102;
+% Mit 101 Nodes, da ein Element (String) immer zwei Knoten besitzt, so ist
+% die Knotenanzahl die Elementanzahl + 1
+for n = 101:MAX_NODES
+    hold on;
+
+    r = nma_fem(a,b,c,@f,x0,u0,beta,len,sol,n); %SOLVES by FEM
+
+    title(sprintf('Solving y''''+y''+y(x)=sin(x)*cos(x).  y(0)=1, y''(10)=1. by FEM. \nN=%d\nRMSERROR=%f',n,r)); 
+    drawnow;
+
+    hold off;
+end
+
+% Ende der Messung und Ausgabe der Zeit
+% elapsedTime = toc;
+% fprintf('Die Berechnungszeit betrug: %f Sekunden.\n', elapsedTime);
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%% 
+% 
+% edit this below to change the forcing function. 
+%%%%%%%%%%%%%%%%%%%%%%%% 
+function v = f(x) 
+   v = 0; 
+end
+
+% Exakte Lösungsfunktion
+%function y = exact_solution(x)
+ %   y = exp((-0.1)/(2*0.4)*x)*(0.2*cos(sqrt((4*0.4*2-(0.1)^2)/(4*(0.4)^2))*x)+0.011*sin(sqrt((4*0.4*2-(0.1)^2)/(4*(0.4)^2))*x));
+%end
+
+function rmserror=nma_fem(a,b,c,f,x0,u0,beta,len,exact_sol,nNodes) 
+% Solves numerically a second order ODE with constant coeff. 
+% using the symmetric Garlekin Finite Elements Methods. 
+% 
+% see the file nma_fem_driver.m on how to call this function. 
+% 
+% Solve a u''(t) + b u'(t) + c u(t) = f(t) 
+% 
+% with t over the range t0 to len 
+% and with initial conditions u(0)=u<%0 
+% and with u'(len)=beta 
+ 
+%by Nasser Abbasi. Sept 26,2006. 
+ 
+    xc=linspace(x0,len,nNodes); 
+ 
+    % This plots the shape functions. 
+    %    x=linspace(x0,len,1000); 
+    %    y=linspace(x0,len,1000); 
+    %    for i=1:nNodes 
+    %        for j=1:length(y) 
+    %            [v,d]=phi(i,x(j),nNodes,x0,len,xc); 
+    %            y(j)=v; 
+    %        end 
+    %        plot(x,y); 
+    %        hold on; 
+    %    end 
+ 
+ 
+    A    = build_stiffness_matrix(nNodes,xc,a,b,c); 
+    load = build_load_vector(a,u0,nNodes,xc,f,beta); 
+ 
+    % Now remove the first row and column from the stiffness matrix 
+ 
+    A(2,1)  = A(2,1)*u0; 
+    load(2) = load(2)-A(2,1); 
+    A       = A(2:end,2:end); 
+    load    = load(2:end); 
+ 
+    % SOLVE for unknowns 
+ 
+    q = A\load; 
+    q = [u0;q]; 
+ 
+    % Plot the solution 
+    y = zeros(length(xc),1); 
+    for i=1:length(xc) 
+        y(i)=trial(xc(i),x0,len,xc,nNodes,q); 
+    end 
+ 
+    plot(xc,y,'ro'); 
+    grid on;
+    hold on; 
+    line(xc,y); 
+ 
+    % Calculate RMSerror. Use 50 points. Should be more than enough. 
+    exact_sol = @(x) exp((-0.10)/(2*0.40)*x)*(0.40*cos(sqrt((4*0.40*2.00-(0.10)^2)/(4*(0.40)^2))*x) + 0.02*sin(sqrt((4*0.40*2.00-(0.10)^2)/(4*(0.40)^2))*x));
+
+    % Berechnung des RMS-Fehlers für die FEM-Lösung
+    NPOINTS = 100; 
+    x = linspace(x0, len, NPOINTS); 
+    rmserror = 0; 
+    for i = 1:length(x) 
+        y_fem = trial(x(i), x0, len, xc, nNodes, q); 
+        y_exact = exact_sol(x(i)); 
+        rmserror = rmserror + (y_fem - y_exact)^2; 
+    end 
+    rmserror = sqrt(rmserror / NPOINTS); 
+end 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+% 
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+function v = trial(x,x0,len,xc,nNodes,q) 
+    if x<x0||x>len 
+        error('in Trial. x outside range'); 
+    end 
+    v = 0; 
+    for i = 1:nNodes 
+        [s,d] = phi(i,x,nNodes,x0,len,xc); %notice ignore d here. 
+        v     = v+ q(i)*s; 
+    end 
+end 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+% 
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+function [v,d]=phi(i,x,nNodes,x0,len,xc) 
+    if(i<1 || i>nNodes) 
+        error('node number outside range'); 
+    end 
+    if(x<x0 || x>len) 
+        error('x outside range'); 
+    end 
+ 
+    h = xc(2)-xc(1); 
+ 
+    if i==1 
+        if(x>xc(2)) 
+            v = 0; 
+            d = 0; 
+        else 
+            v = (xc(2)-x)/h; 
+            d = -1/h; 
+        end 
+        return; 
+    end 
+ 
+    if i==nNodes 
+        if(x<xc(nNodes-1)) 
+            v = 0; 
+            d = 0; 
+        else 
+            v = (x-xc(nNodes-1))/h; 
+            d = 1/h; 
+        end 
+        return; 
+    end 
+ 
+    if(x>xc(i+1) || x<xc(i-1) ) 
+        v = 0; 
+        d = 0; 
+    else 
+        if(x<=xc(i)) 
+            v = (x-xc(i-1))/h; 
+            d = 1/h; 
+        else 
+            v = (xc(i+1)-x)/h; 
+            d = -1/h; 
+        end 
+    end 
+end 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+% SEE my report for description of this function. 
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+function A=build_stiffness_matrix(nNodes,xc,a,b,c) 
+ 
+    A = zeros(nNodes,nNodes); 
+    h = xc(2)-xc(1); 
+    for i = 1:nNodes 
+        if i==1 
+            A(1,1) = -a/h+ a*xc(1)/h^2 - b/h +c*h/3 - a*xc(2)/h^2; 
+            A(1,2) = -a*xc(1)/h^2 +b/2 -c*h/6 + a*xc(2)/h^2; 
+        else 
+            if i==nNodes 
+                A(nNodes,nNodes-1) = -a*xc(nNodes-1)/h^2 -b/2 +c*h/6 +a*xc(nNodes)/h^2; 
+                A(nNodes,nNodes)   = a*xc(nNodes-1)/h^2 +b/2 +c*h/3 -a*xc(nNodes)/h^2; 
+            else 
+                A(i,i-1) = -a*xc(i-1)/h^2 -b/2 + c*h/6 + a*xc(i)/h^2; 
+                A(i,i)   = a*xc(i-1)/h^2 + 2*c*h/3 -a*xc(i+1)/h^2; 
+                A(i,i+1) = -a*xc(i)/h^2 + b/2 + c*h/6 + a*xc(i+1)/h^2; 
+            end 
+        end 
+    end 
+end 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+% 
+%Called to integrate the 'force' function 
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+function v=integrand(x,f,xj) 
+    v = (x-xj).*f(x); 
+end 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+% 
+% SEE my report for more description of this 
+% This build the load vector. 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+function load = build_load_vector(a,u0,nNodes,xc,f,beta) 
+ 
+    load = zeros(nNodes,1); 
+    h    = xc(2)-xc(1); 
+ 
+ 
+    load(1) = -(1/h)* quad(@(x)integrand(x,f,xc(2)),xc(1),xc(2)) ; 
+    load(nNodes) = (1/h)* quad(@(x)integrand(x,f,xc(nNodes-1)),xc(nNodes-1),xc(nNodes)) - a*beta; 
+    for i = 2:nNodes-1 
+        load(i) = quad(@(x)integrand(x,f,xc(i-1)),xc(i-1),xc(i)) - ... 
+                  quad(@(x)integrand(x,f,xc(i+1)),xc(i),xc(i+1)); 
+        load(i) = (1/h)*load(i) ; 
+    end 
+end 
